@@ -1,1 +1,36 @@
+name: Check for Protected Filename Changes
 
+on:
+  pull_request:
+    branches:
+      - main  # This specifies that the workflow runs on PRs targeting the main branch
+
+jobs:
+  check-filenames:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # This is crucial for getting the full history and comparing branches
+
+      - name: Check for protected filename changes
+        id: check
+        run: |
+          PROTECTED_FILES=("file_1.txt" "file_2.txt")
+          FILES_CHANGED=$(git diff --name-only origin/main...HEAD)
+          
+          echo "Checking for filename changes..."
+          
+          for file in "${PROTECTED_FILES[@]}"; do
+            if echo "$FILES_CHANGED" | grep -q "$file"; then
+              if [ -f "$file" ]; then
+                echo "File $file exists, no change in filename."
+              else
+                echo "::error::Error: The filename '$file' has been changed or deleted. Merging is restricted. Please revert the filename change."
+                exit 1
+              fi
+            fi
+          done
+          
+          echo "No protected filenames were changed. All good to go!"
