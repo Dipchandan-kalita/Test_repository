@@ -1,0 +1,82 @@
+name: Check DITA File Content Protection
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-dita-filename-change-with-content:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Fetch PR file changes
+        id: pr-files
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.data.number,
+              per_page: 100
+            });
+            return JSON.stringify(files.map(f => ({
+              filename: f.filename,
+              status: f.status,
+              previous_filename: f.previous_filename || null
+            })));
+
+      - name: Check for DITA filename changes with specific content
+        env:
+          PR_FILES: ${{ steps.pr-files.outputs.result }}
+        run: |
+          set -e
+          echo "$PR_FILES" > pr_files.json
+
+          # Get deleted, added, and renamed dita files
+          deleted_dita=($(jq -r '.[] | select(.status == "removed" and .filename | endswith(".dita")) | .filename' pr_files.json))
+          added_dita=($(jq -r '.[] | select(.status == "added" and .filename | endswith(".dita")) | .filename' pr_files.json))
+          renamed_dita=($(jq -r '.[] | select(.status == "renamed" and .previous_filename | endswith(".dita")) | .previous_filename + ":" + .filename' pr_files.json))
+
+          # Check renamed dita files
+          has_protected_rename=0
+          for rename in "${renamed_dita[@]}"; do
+            old="${rename%%:*}"
+            new="${rename##*:}"
+            if grep -q "A hardlink of this topic is used in RSC Web UI. Do not change the file name." "$old"; then
+              echo "Protected DITA file renamed: $old -> $new"
+              has_protected_rename=1
+            fi
+          done
+
+          # Check deleted dita files (possible delete+add rename)
+          for del in "${deleted_dita[@]}"; do
+            if grep -q "A hardlink of this topic is used in RSC Web UI. Do not change the file name." "$del"; then
+              echo "Protected DITA file deleted: $del"
+              has_protected_rename=1
+            fi
+          done
+
+          # Check newly added dita files for suspicious adds (optional, if needed)
+          # for add in "${added_dita[@]}"; do
+          #   if grep -q "A hardlink of this topic is used in RSC Web UI. Do not change the file name." "$add"; then
+          #     echo "Protected DITA file added: $add"
+          #     has_protected_rename=1
+          #   fi
+          # done
+
+          if [[ "$has_protected_rename" == "1" ]]; then
+            echo "Protected DITA file name change detected. Failing check."
+            exit 1
+          else
+            echo "No protected DITA file name changes detected."
+          fi
