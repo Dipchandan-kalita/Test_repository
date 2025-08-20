@@ -35,15 +35,20 @@ jobs:
               previous_filename: f.previous_filename || null
             })));
 
+      - name: Read protected files list
+        id: read-protected
+        run: |
+          # Read each line, trim whitespace, ignore empty and comment lines
+          grep -v '^\s*$' .github/protected_files.txt | grep -v '^\s*#' > protected_list.txt
+
       - name: Check for filename changes (including delete+add pattern)
         env:
-          PROTECTED_PATTERNS: "test.dita file_2.txt"
           PR_FILES: ${{ steps.pr-files.outputs.result }}
         run: |
           set -e
 
-          # Convert protected patterns to an array
-          IFS=' ' read -r -a patterns <<< "$PROTECTED_PATTERNS"
+          # Read patterns from protected_list.txt into an array
+          mapfile -t patterns < protected_list.txt
 
           # Read PR files
           echo "$PR_FILES" > pr_files.json
@@ -55,14 +60,15 @@ jobs:
 
           has_name_change=0
 
-          # Helper: Match file patterns (simple globbing)
           function matches_pattern() {
             local file="$1"
             for pat in "${patterns[@]}"; do
+              # Remove leading/trailing whitespace
+              pat="${pat#"${pat%%[![:space:]]*}"}"
+              pat="${pat%"${pat##*[![:space:]]}"}"
               if [[ "$file" == $pat ]]; then
                 return 0
               fi
-              # Glob matching
               if [[ "$pat" == *"*"* && "$file" == $pat ]]; then
                 return 0
               fi
@@ -70,7 +76,6 @@ jobs:
             return 1
           }
 
-          # Check renamed files
           for rename in "${renamed_files[@]}"; do
             old="${rename%%:*}"
             new="${rename##*:}"
@@ -80,7 +85,6 @@ jobs:
             fi
           done
 
-          # Check deleted and added files for "delete+add" pattern
           for del in "${deleted_files[@]}"; do
             if matches_pattern "$del"; then
               echo "Detected protected file deleted: $del"
