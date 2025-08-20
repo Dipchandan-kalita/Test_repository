@@ -1,0 +1,6 @@
+# List of protected files or glob patterns
+test.dita
+file_2.txt
+important_dir/*
+*.dita
+# Add more patterns here
