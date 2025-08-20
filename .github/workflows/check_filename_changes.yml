@@ -1,36 +1,49 @@
-name: Check for Protected Filename Changes
+name: Check Filename Changes
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
+    types: [opened, synchronize, reopened]
 
 jobs:
-  check-filenames:  # This is the job ID
-    name: Check DITA Filename Changes  # This is the name that will appear in the UI
+  check-filename-change:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Check for protected filename changes
+      - name: Get changed files
+        id: files
+        uses: tj-actions/changed-files@v44
+        with:
+          separator: ","
+          # Optionally, restrict to certain directories or file types:
+          # files: |
+          #   src/**
+          #   docs/*.md
+
+      - name: Check for filename changes
+        id: check_names
         run: |
-          PROTECTED_FILES=("file_1_rename.txt" "file_3_rename.txt" "test.dita")
-          FILES_CHANGED=$(git diff --name-only origin/main...HEAD)
-          
-          echo "Checking for filename changes..."
-          
-          for file in "${PROTECTED_FILES[@]}"; do
-            if echo "$FILES_CHANGED" | grep -q "$file"; then
-              if [ -f "$file" ]; then
-                echo "File $file exists, no change in filename."
-              else
-                echo "::error::Error: The filename '$file' has been changed or deleted. Merging is restricted. Please revert the filename change."
-                exit 1
+          #!/bin/bash
+          set -e
+          TARGET_FILES="test.dita file_2.txt"
+          CHANGED_FILES="${{ steps.files.outputs.all_changed_files }}"
+          HAS_NAME_CHANGE=0
+
+          for pattern in $TARGET_FILES; do
+            for file in $(echo $CHANGED_FILES | tr "," "\n"); do
+              # Check for file name change (renamed files)
+              if git diff --name-status origin/${{ github.event.pull_request.base.ref }}...HEAD | grep '^R' | grep "$pattern"; then
+                HAS_NAME_CHANGE=1
+                echo "Detected filename change in $file"
               fi
-            fi
+            done
           done
-          
-          echo "No protected filenames were changed. All good to go!"
+
+          if [[ "$HAS_NAME_CHANGE" == "1" ]]; then
+            echo "Filename change detected in protected files. Failing check."
+            exit 1
+          else
+            echo "No filename change detected in protected files."
+          fi
