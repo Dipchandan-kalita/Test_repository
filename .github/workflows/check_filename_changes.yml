@@ -39,7 +39,7 @@ jobs:
         id: read-protected
         run: |
           # Read each line, trim whitespace, ignore empty and comment lines
-          grep -v '^\s*$' .github/protected_files.txt | grep -v '^\s*#' > protected_list.txt
+          grep -v '^\s*$' .github/workflows/protected_files.txt | grep -v '^\s*#' > protected_list.txt
 
       - name: Check for filename changes (including delete+add pattern)
         env:
