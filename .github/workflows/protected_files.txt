@@ -1,6 +1,6 @@
 # List of protected files or glob patterns
-test.dita
-file_2.txt
+sample1.dita
+sample2.dita
 important_dir/*
-*.dita
+#*.dita
 # Add more patterns here
