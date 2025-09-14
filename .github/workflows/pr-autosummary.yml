@@ -1,0 +1,44 @@
+name: Auto-populate PR Description with Change Summary
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  summarize-changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get PR changes
+        id: changed_files
+        run: |
+          echo "## Change Summary" > changes.txt
+          echo "" >> changes.txt
+          echo "**Files Added:**" >> changes.txt
+          git diff --name-status origin/${{ github.event.pull_request.base.ref }}...${{ github.sha }} | grep "^A" | awk '{print "- " $2}' >> changes.txt || echo "- None" >> changes.txt
+          echo "" >> changes.txt
+
+          echo "**Files Modified:**" >> changes.txt
+          git diff --name-status origin/${{ github.event.pull_request.base.ref }}...${{ github.sha }} | grep "^M" | awk '{print "- " $2}' >> changes.txt || echo "- None" >> changes.txt
+          echo "" >> changes.txt
+
+          echo "**Files Deleted:**" >> changes.txt
+          git diff --name-status origin/${{ github.event.pull_request.base.ref }}...${{ github.sha }} | grep "^D" | awk '{print "- " $2}' >> changes.txt || echo "- None" >> changes.txt
+
+      - name: Install GitHub CLI
+        run: |
+          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key C99B11DEB97541F0
+          sudo apt-add-repository https://cli.github.com/packages
+          sudo apt-get update
+          sudo apt-get install gh
+
+      - name: Update PR Description
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr edit ${{ github.event.pull_request.number }} --body "$(cat changes.txt)"
